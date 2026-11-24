@@ -18,7 +18,9 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "icon.png"
@@ -31,5 +33,6 @@
       "createStartMenuShortcut": true,
       "deleteAppDataOnUninstall": true
     }
-  }
+  },
+  "author": "ECA002"
 }
