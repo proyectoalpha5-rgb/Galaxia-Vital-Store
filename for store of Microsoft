@@ -1,1 +1,460 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
+    body, html {
+      width: 100%; height: 100%; overflow: hidden;
+      background: transparent;
+      display: flex; justify-content: center; align-items: center;
+      user-select: none;
+    }
+    #widget-wrapper {
+      display: flex; align-items: center;
+      position: relative;
+      transition: opacity 0.5s ease;
+    }
+    #widget-wrapper.idle-ghost { opacity: 0.22; }
 
+    #floating-orb {
+      width: 210px; height: 210px;
+      border-radius: 50%;
+      background: radial-gradient(circle at center, #0c0c18 58%, #040409 100%);
+      border: 2px solid rgba(0, 229, 255, 0.55);
+      box-shadow: 0 0 24px rgba(168, 85, 247, 0.45), inset 0 0 18px rgba(0, 229, 255, 0.25);
+      position: relative;
+      display: flex; justify-content: center; align-items: center;
+      overflow: hidden;
+      cursor: grab;
+      z-index: 2;
+      flex-shrink: 0;
+    }
+    #floating-orb:active { cursor: grabbing; }
+    canvas { display: block; border-radius: 50%; }
+
+    #hud-card {
+      margin-left: -24px;
+      padding: 12px 14px 12px 32px;
+      width: 175px;
+      background: rgba(10, 10, 20, 0.9);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(0, 229, 255, 0.4);
+      border-left: none;
+      border-radius: 0 16px 16px 0;
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.65);
+      color: white;
+      display: flex; flex-direction: column; gap: 6px;
+      z-index: 1;
+      cursor: move;
+    }
+    #clock {
+      font-size: 18px; font-weight: 700; letter-spacing: 1px;
+      color: #fff; text-shadow: 0 0 8px rgba(0, 229, 255, 0.7);
+      line-height: 1;
+    }
+    #date-text {
+      font-size: 10px; color: #a855f7; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr; gap: 5px;
+      margin-top: 2px; border-top: 1px solid rgba(255,255,255,0.1);
+      padding-top: 6px;
+    }
+    .stat-item {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 6px; padding: 4px 6px;
+      display: flex; flex-direction: column;
+    }
+    .stat-label { font-size: 8px; color: rgba(255,255,255,0.6); text-transform: uppercase; }
+    .stat-val { font-size: 11px; font-weight: 700; color: #00e5ff; }
+
+    body.view-only-galaxy #hud-card { display: none; }
+    body.view-only-galaxy #orb-actions { display: flex; }
+    body.view-only-stats #floating-orb { display: none; }
+    body.view-only-stats #hud-card {
+      margin-left: 0; border-left: 1px solid rgba(0, 229, 255, 0.4);
+      border-radius: 16px; padding-left: 14px;
+    }
+
+    #orb-actions {
+      display: none; position: absolute; bottom: 14px; gap: 6px; z-index: 8;
+    }
+    .hud-actions {
+      display: flex; justify-content: flex-end; gap: 6px; margin-top: 2px;
+    }
+    .mini-btn {
+      background: rgba(15, 15, 30, 0.9);
+      border: 1px solid rgba(0, 229, 255, 0.45);
+      color: white; width: 22px; height: 22px; border-radius: 50%;
+      cursor: pointer; display: flex; justify-content: center; align-items: center;
+      font-size: 11px;
+    }
+    .mini-btn:hover { background: #00e5ff; color: #000; }
+
+    #settings-panel {
+      position: fixed; bottom: 8px; right: 10px; width: 248px; max-height: 305px; overflow-y: auto;
+      background: rgba(10, 10, 20, 0.98); backdrop-filter: blur(12px);
+      border: 1px solid rgba(0, 229, 255, 0.5); border-radius: 12px;
+      padding: 11px; display: none; flex-direction: column; gap: 6px;
+      z-index: 20; color: white; box-shadow: 0 8px 30px rgba(0,0,0,0.9);
+    }
+    #settings-panel.active { display: flex; }
+    .control-group { display: flex; flex-direction: column; gap: 3px; }
+    .control-group label { color: rgba(255,255,255,0.85); font-size: 10px; text-transform: uppercase; }
+    .control-row { display: flex; justify-content: space-between; align-items: center; }
+    input[type="range"] { width: 100%; accent-color: #00e5ff; cursor: pointer; }
+    input[type="color"] { border: none; width: 20px; height: 20px; background: none; cursor: pointer; }
+    select { background: rgba(255,255,255,0.12); color: white; border: 1px solid rgba(0,229,255,0.4); border-radius: 4px; padding: 3px; font-size: 10px; outline: none; }
+    select option { background: #0d0d1a; color: white; }
+  </style>
+</head>
+<body>
+  <div id="widget-wrapper">
+    <div id="floating-orb" title="Clic para despertar • Arrastra para girar • Rueda para zoom">
+      <div id="orb-actions">
+        <button id="orb-pin-btn" class="mini-btn" title="Fijar / Desbloquear posición">🔓</button>
+        <button id="orb-settings-btn" class="mini-btn" title="Configuración">⚙</button>
+      </div>
+    </div>
+
+    <div id="hud-card" title="Arrastra para mover de lugar">
+      <div id="clock">00:00:00</div>
+      <div id="date-text">LUN, 23 NOV</div>
+
+      <div class="stats-grid">
+        <div class="stat-item"><span class="stat-label">CPU</span><span class="stat-val" id="cpu-val">12%</span></div>
+        <div class="stat-item"><span class="stat-label">RAM</span><span class="stat-val" id="ram-val">45%</span></div>
+        <div class="stat-item"><span class="stat-label">TEMP</span><span class="stat-val" id="temp-val">48°C</span></div>
+        <div class="stat-item"><span class="stat-label">FPS</span><span class="stat-val" id="fps-val">60</span></div>
+      </div>
+
+      <div class="hud-actions">
+        <button id="pin-btn" class="mini-btn" title="Fijar / Desbloquear posición">🔓</button>
+        <button id="settings-btn" class="mini-btn" title="Configuración">⚙</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="settings-panel">
+    <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(255,255,255,0.12);padding-bottom:4px;margin-bottom:2px;">
+      <span style="font-size:10px;font-weight:bold;color:#00e5ff;">CONFIGURACIÓN PRO</span>
+      <button id="close-settings-btn" style="background:none;border:none;color:#ff6b6b;font-size:13px;font-weight:bold;cursor:pointer;" title="Cerrar">✕</button>
+    </div>
+
+    <div class="control-group">
+      <label>Modo de Vista</label>
+      <select id="viewModeSelect">
+        <option value="full">Completo (Galaxia + Datos)</option>
+        <option value="only-galaxy">Solo Galaxia</option>
+        <option value="only-stats">Solo Parámetros</option>
+      </select>
+    </div>
+    <label class="control-row"><span>Auto-Velocidad CPU</span><input type="checkbox" id="vitalModeToggle" checked></label>
+    <label class="control-row"><span>Latido Cósmico (Pulso)</span><input type="checkbox" id="pulseToggle" checked></label>
+    <div class="control-group">
+      <label>Forma Cósmica</label>
+      <select id="shapeSelect">
+        <option value="spiral">Galaxia Espiral (6 Brazos)</option>
+        <option value="ring">Nebulosa Anillo</option>
+        <option value="cluster">Cúmulo Estelar</option>
+        <option value="quasar">Quásar Doble</option>
+      </select>
+    </div>
+    <div class="control-group">
+      <label>Densidad Estelar (Hasta 18k)</label>
+      <input type="range" id="starCountRange" min="4000" max="18000" step="1000" value="8000">
+    </div>
+    <label class="control-row">Color Halo Exterior <span><input type="color" id="haloColor" value="#00e5ff"></span></label>
+
+    <hr style="border-color: rgba(255,255,255,0.1);">
+    <div class="control-group">
+      <label>Velocidad Base (Manual)</label>
+      <input type="range" id="speedRange" min="0" max="0.8" step="0.05" value="0.2">
+    </div>
+    <div class="control-group">
+      <label>Tamaño Agujero Negro</label>
+      <input type="range" id="sizeRange" min="0.05" max="0.25" step="0.01" value="0.1">
+    </div>
+    <div class="control-group">
+      <label class="control-row">Color Brazo 1 <span><input type="color" id="purpleColor" value="#a855f7"></span></label>
+    </div>
+    <div class="control-group">
+      <label class="control-row">Color Brazo 2 <span><input type="color" id="blueColor" value="#00e5ff"></span></label>
+    </div>
+  </div>
+<script src="three.min.js"></script>
+  <script>
+    let ipcRenderer = null;
+    try { ipcRenderer = require('electron').ipcRenderer; } catch (e) {}
+
+    // --- RELOJ Y FECHA ---
+    const dias = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
+    const meses = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'];
+    function updateClockAndDate() {
+      const now = new Date();
+      document.getElementById('clock').textContent = now.toTimeString().slice(0, 8);
+      document.getElementById('date-text').textContent = `${dias[now.getDay()]}, ${now.getDate()} ${meses[now.getMonth()]}`;
+    }
+    setInterval(updateClockAndDate, 1000);
+    updateClockAndDate();
+
+    // --- ARRASTRE DE VENTANA Y FIJAR (📌 / 🔓) ---
+    const wrapper = document.getElementById('widget-wrapper');
+    const orb = document.getElementById('floating-orb');
+    const settingsBtn = document.getElementById('settings-btn');
+    const orbSettingsBtn = document.getElementById('orb-settings-btn');
+    const settingsPanel = document.getElementById('settings-panel');
+    const pinBtn = document.getElementById('pin-btn');
+    const orbPinBtn = document.getElementById('orb-pin-btn');
+    const hudCard = document.getElementById('hud-card');
+
+    let isPinned = localStorage.getItem('widget_pinned') === 'true';
+    let isMovingWin = false, winStartX = 0, winStartY = 0;
+
+    function updatePinUI() {
+      const icon = isPinned ? '📌' : '🔓';
+      const title = isPinned ? 'Fijado (Clic para mover)' : 'Desbloqueado (Arrastra para mover)';
+      pinBtn.textContent = icon; pinBtn.title = title;
+      orbPinBtn.textContent = icon; orbPinBtn.title = title;
+      hudCard.style.cursor = isPinned ? 'default' : 'move';
+      pinBtn.style.borderColor = isPinned ? '#ff6b6b' : 'rgba(0, 229, 255, 0.45)';
+      orbPinBtn.style.borderColor = isPinned ? '#ff6b6b' : 'rgba(0, 229, 255, 0.45)';
+    }
+    updatePinUI();
+
+    function togglePin(e) {
+      e.stopPropagation();
+      isPinned = !isPinned;
+      localStorage.setItem('widget_pinned', isPinned);
+      updatePinUI();
+    }
+    pinBtn.addEventListener('click', togglePin);
+    orbPinBtn.addEventListener('click', togglePin);
+
+    hudCard.addEventListener('mousedown', (e) => {
+      if (isPinned || e.target.closest('button')) return;
+      isMovingWin = true; winStartX = e.screenX; winStartY = e.screenY;
+    });
+    orb.addEventListener('mousedown', (e) => {
+      if (!isPinned && (e.button === 2 || (document.body.classList.contains('view-only-galaxy') && e.shiftKey))) {
+        isMovingWin = true; winStartX = e.screenX; winStartY = e.screenY;
+      }
+    });
+    orb.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isMovingWin) return;
+      const dx = e.screenX - winStartX, dy = e.screenY - winStartY;
+      winStartX = e.screenX; winStartY = e.screenY;
+      if (ipcRenderer && (dx !== 0 || dy !== 0)) ipcRenderer.send('move-window', { dx, dy });
+    });
+    window.addEventListener('mouseup', () => { isMovingWin = false; });
+
+    // --- PANELES Y MODOS ---
+    function toggleSettings(e) {
+      e.stopPropagation();
+      settingsPanel.classList.toggle('active');
+    }
+    settingsBtn.addEventListener('click', toggleSettings);
+    orbSettingsBtn.addEventListener('click', toggleSettings);
+    document.getElementById('close-settings-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      settingsPanel.classList.remove('active');
+    });
+    document.addEventListener('mousedown', (e) => {
+      if (!settingsPanel.contains(e.target) && e.target !== settingsBtn && e.target !== orbSettingsBtn) {
+        settingsPanel.classList.remove('active');
+      }
+    });
+
+    let vitalMode = true;
+    let pulseMode = true;
+    document.getElementById('vitalModeToggle').addEventListener('change', (e) => {
+      vitalMode = e.target.checked;
+      if (!vitalMode) cpuSpeedBoost = 0;
+    });
+    document.getElementById('pulseToggle').addEventListener('change', (e) => { pulseMode = e.target.checked; });
+    document.getElementById('viewModeSelect').addEventListener('change', (e) => {
+      document.body.classList.remove('view-only-galaxy', 'view-only-stats');
+      if (e.target.value === 'only-galaxy') document.body.classList.add('view-only-galaxy');
+      if (e.target.value === 'only-stats') document.body.classList.add('view-only-stats');
+    });
+// --- THREE.JS ESCENA Y CÁMARA ---
+    const size = 210;
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1000);
+    let camDistance = 4.8, rotX = 0.65, rotY = 0;
+
+    function updateCameraPosition() {
+      camera.position.x = camDistance * Math.sin(rotY) * Math.cos(rotX);
+      camera.position.y = camDistance * Math.sin(rotX);
+      camera.position.z = camDistance * Math.cos(rotY) * Math.cos(rotX);
+      camera.lookAt(0, 0, 0);
+    }
+    updateCameraPosition();
+
+    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+    renderer.setSize(size, size);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    orb.appendChild(renderer.domElement);
+
+    let isDraggingGalaxy = false, prevMouseX = 0, prevMouseY = 0;
+    renderer.domElement.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      isDraggingGalaxy = true; prevMouseX = e.clientX; prevMouseY = e.clientY;
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (!isDraggingGalaxy) return;
+      rotY -= (e.clientX - prevMouseX) * 0.012;
+      rotX = Math.max(-1.35, Math.min(1.35, rotX + (e.clientY - prevMouseY) * 0.012));
+      prevMouseX = e.clientX; prevMouseY = e.clientY;
+      updateCameraPosition();
+    });
+    window.addEventListener('mouseup', () => { isDraggingGalaxy = false; });
+
+    orb.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      camDistance = Math.max(2.8, Math.min(6.6, camDistance + e.deltaY * 0.003));
+      updateCameraPosition();
+    }, { passive: false });
+
+    // --- AGUJERO NEGRO Y GALAXIA ---
+    const blackHoleGroup = new THREE.Group();
+    scene.add(blackHoleGroup);
+    blackHoleGroup.add(new THREE.Mesh(new THREE.SphereGeometry(0.1, 32, 32), new THREE.MeshBasicMaterial({ color: 0x000000 })));
+    const diskMaterial = new THREE.MeshBasicMaterial({ color: 0xffaa00, side: THREE.DoubleSide, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending });
+    const accretionDisk = new THREE.Mesh(new THREE.RingGeometry(0.11, 0.22, 32), diskMaterial);
+    accretionDisk.rotation.x = Math.PI / 2;
+    blackHoleGroup.add(accretionDisk);
+
+    const parameters = {
+      count: 8000, size: 0.024, radius: 2.2, branches: 6, spin: 1,
+      randomness: 0.5, insideColor: '#ffe8a3',
+      purpleOutsideColor: '#a855f7', blueOutsideColor: '#00e5ff',
+      manualBaseSpeed: 0.2, shape: 'spiral'
+    };
+    let points = null, cpuSpeedBoost = 0;
+
+    function generateGalaxy() {
+      if (points) { scene.remove(points); points.geometry.dispose(); points.material.dispose(); }
+      const geometry = new THREE.BufferGeometry();
+      const positions = new Float32Array(parameters.count * 3);
+      const colors = new Float32Array(parameters.count * 3);
+      const colorInside = new THREE.Color(parameters.insideColor);
+      const color1 = new THREE.Color(parameters.purpleOutsideColor);
+      const color2 = new THREE.Color(parameters.blueOutsideColor);
+
+      for (let i = 0; i < parameters.count; i++) {
+        const i3 = i * 3, t = Math.random(), branchIndex = i % parameters.branches;
+        let x = 0, y = 0, z = 0;
+        if (parameters.shape === 'spiral') {
+          const r = t * parameters.radius;
+          const angle = (branchIndex / parameters.branches) * Math.PI * 2 + r * parameters.spin;
+          x = Math.cos(angle) * r + (Math.random() - 0.5) * parameters.randomness * r;
+          y = (Math.random() - 0.5) * parameters.randomness * 0.2;
+          z = Math.sin(angle) * r + (Math.random() - 0.5) * parameters.randomness * r;
+        } else if (parameters.shape === 'ring') {
+          const r = 1.1 + (Math.random() - 0.5) * 0.65, angle = Math.random() * Math.PI * 2;
+          x = Math.cos(angle) * r; y = (Math.random() - 0.5) * 0.25; z = Math.sin(angle) * r;
+        } else if (parameters.shape === 'cluster') {
+          const r = Math.pow(t, 0.6) * 1.9, theta = Math.random() * Math.PI * 2, phi = Math.acos(2 * Math.random() - 1);
+          x = r * Math.sin(phi) * Math.cos(theta); y = r * Math.sin(phi) * Math.sin(theta) * 0.65; z = r * Math.cos(phi);
+        } else if (parameters.shape === 'quasar') {
+          if (i % 4 === 0) {
+            y = (Math.random() - 0.5) * 3.8;
+            x = (Math.random() - 0.5) * 0.18 * (1 + Math.abs(y) * 0.3);
+            z = (Math.random() - 0.5) * 0.18 * (1 + Math.abs(y) * 0.3);
+          } else {
+            const r = t * 1.8, angle = Math.random() * Math.PI * 2 + r * 1.5;
+            x = Math.cos(angle) * r; y = (Math.random() - 0.5) * 0.12; z = Math.sin(angle) * r;
+          }
+        }
+        positions[i3] = x; positions[i3 + 1] = y; positions[i3 + 2] = z;
+        const distRatio = Math.min(1, Math.sqrt(x*x + y*y + z*z) / parameters.radius);
+        const mixedColor = colorInside.clone().lerp((branchIndex % 2 === 0) ? color1 : color2, distRatio);
+        colors[i3] = mixedColor.r; colors[i3 + 1] = mixedColor.g; colors[i3 + 2] = mixedColor.b;
+      }
+      geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      points = new THREE.Points(geometry, new THREE.PointsMaterial({ size: parameters.size, sizeAttenuation: true, depthWrite: false, blending: THREE.AdditiveBlending, vertexColors: true }));
+      scene.add(points);
+    }
+    generateGalaxy();
+
+    // --- CONTROLES ---
+    document.getElementById('speedRange').addEventListener('input', (e) => { parameters.manualBaseSpeed = parseFloat(e.target.value); });
+    document.getElementById('sizeRange').addEventListener('input', (e) => { const s = parseFloat(e.target.value) / 0.1; blackHoleGroup.scale.set(s, s, s); });
+    document.getElementById('purpleColor').addEventListener('input', (e) => { parameters.purpleOutsideColor = e.target.value; generateGalaxy(); });
+    document.getElementById('blueColor').addEventListener('input', (e) => { parameters.blueOutsideColor = e.target.value; generateGalaxy(); });
+    document.getElementById('shapeSelect').addEventListener('change', (e) => { parameters.shape = e.target.value; generateGalaxy(); });
+    document.getElementById('starCountRange').addEventListener('input', (e) => { parameters.count = parseInt(e.target.value); generateGalaxy(); });
+    document.getElementById('haloColor').addEventListener('input', (e) => {
+      orb.style.borderColor = e.target.value;
+      orb.style.boxShadow = `0 0 26px ${e.target.value}88, inset 0 0 18px ${e.target.value}44`;
+    });
+
+    // --- MÉTRICAS DE SISTEMA ---
+    if (ipcRenderer) {
+      ipcRenderer.on('system-stats', (event, stats) => {
+        document.getElementById('cpu-val').textContent = `${stats.cpu}%`;
+        document.getElementById('ram-val').textContent = `${stats.ram}%`;
+        document.getElementById('temp-val').textContent = stats.temp || '--°C';
+        if (vitalMode) {
+          cpuSpeedBoost = (stats.cpu / 100) * 0.95;
+          diskMaterial.color.setHex(stats.cpu > 80 ? 0xff3333 : 0xffaa00);
+        }
+      });
+    }
+
+    // --- DESPERTAR SOLO AL HACER CLIC ---
+    let idleTimer;
+    function wakeWidget() {
+      wrapper.classList.remove('idle-ghost');
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        if (!settingsPanel.classList.contains('active') && !isDraggingGalaxy) {
+          wrapper.classList.add('idle-ghost');
+        }
+      }, 3000);
+    }
+    wrapper.addEventListener('mousedown', wakeWidget);
+    settingsPanel.addEventListener('mousedown', wakeWidget);
+    wakeWidget();
+
+    // --- BUCLE DE ANIMACIÓN (0% CPU SI ESTÁ OCULTO/MINIMIZADO) ---
+    const clock = new THREE.Clock();
+    let frameCount = 0, lastFpsTime = performance.now();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      if (document.hidden) return;
+
+      const now = performance.now();
+      frameCount++;
+      if (now - lastFpsTime >= 1000) {
+        document.getElementById('fps-val').textContent = frameCount;
+        frameCount = 0;
+        lastFpsTime = now;
+      }
+
+      const elapsed = clock.getElapsedTime();
+      const delta = Math.min(clock.getDelta() || 0.016, 0.1);
+      const finalSpeed = parameters.manualBaseSpeed + (vitalMode ? cpuSpeedBoost : 0);
+
+      if (points) {
+        points.rotation.y += finalSpeed * delta;
+        if (pulseMode) {
+          const pulse = 1 + Math.sin(elapsed * (2 + finalSpeed * 3)) * 0.035;
+          points.scale.set(pulse, pulse, pulse);
+        } else points.scale.set(1, 1, 1);
+      }
+      accretionDisk.rotation.z -= (finalSpeed * 2.2) * delta;
+      renderer.render(scene, camera);
+    }
+    animate();
+  </script>
+</body>
+</html>
